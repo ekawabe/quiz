@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>クイズ回答フォーム</title>
+    <title>クイズ回答</title>
     <style>
         body {
             font-family: sans-serif;
             text-align: center;
             background: #f0f8ff;
             padding: 20px;
+            margin: 0;
         }
 
         select, input, button {
@@ -22,7 +23,7 @@
             box-sizing: border-box;
         }
 
-        button {
+        .btn-submit {
             background: #0055ff;
             color: white;
             border: none;
@@ -30,26 +31,75 @@
             cursor: pointer;
         }
 
-            button:active {
+            .btn-submit:active {
                 background: #0033aa;
             }
 
         .hidden {
-            display: none;
+            display: none !important;
         }
+
+        /* 4択ボタンのデザイン */
+        .choice-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .btn-choice {
+            font-size: 2em;
+            padding: 40px 10px;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-a {
+            background: #e74c3c;
+        }
+        /* 赤 */
+        .btn-b {
+            background: #3498db;
+        }
+        /* 青 */
+        .btn-c {
+            background: #2ecc71;
+        }
+        /* 緑 */
+        .btn-d {
+            background: #f1c40f;
+            color: #333;
+        }
+        /* 黄 */
     </style>
 </head>
 <body>
     <h2>クイズ回答</h2>
 
-    <div id="form-area">
-        <select id="team">
-            <option value="">あなたのチームを選択</option>
-            <!-- 1〜20をJSで生成 -->
-        </select>
+    <select id="team">
+        <option value="">あなたのチームを選択</option>
+    </select>
 
-        <input type="text" id="answer" placeholder="回答を入力してください">
-        <button onclick="submitAnswer()">送信する</button>
+    <div id="form-area">
+        <!-- フリーテキスト用 -->
+        <div id="text-area">
+            <input type="text" id="answer" placeholder="回答を入力してください">
+            <button class="btn-submit" onclick="submitTextAnswer()">送信する</button>
+        </div>
+
+        <!-- 4択用 -->
+        <div id="choice-area" class="hidden">
+            <p style="font-weight: bold; color: #333;">選択肢をタップして回答</p>
+            <div class="choice-grid">
+                <button class="btn-choice btn-a" onclick="submitChoiceAnswer('A')">A</button>
+                <button class="btn-choice btn-b" onclick="submitChoiceAnswer('B')">B</button>
+                <button class="btn-choice btn-c" onclick="submitChoiceAnswer('C')">C</button>
+                <button class="btn-choice btn-d" onclick="submitChoiceAnswer('D')">D</button>
+            </div>
+        </div>
     </div>
 
     <div id="wait-area" class="hidden">
@@ -60,31 +110,67 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>const socket = io();
 
-        const teamSelect = document.getElementById('team');
-        for (let i = 1; i <= 20; i++) {
-            teamSelect.innerHTML += `<option value="${i}">チーム ${i}</option>`;
-        }
+        // サーバーから状態を受信
+        socket.on('update_status', (data) => {
+            updateTeamSelect(data.teamCount);
+            setFormat(data.currentFormat);
+        });
 
-        function submitAnswer() {
-            const team = document.getElementById('team').value;
-            const answer = document.getElementById('answer').value;
-
-            if (!team || !answer) {
-                alert("チームと回答を両方入力してください！");
-                return;
-            }
-
-            socket.emit('submit_answer', { team: parseInt(team), answer: answer });
-
-            document.getElementById('form-area').classList.add('hidden');
-            document.getElementById('wait-area').classList.remove('hidden');
-        }
-
-        // 次の問題が始まったらフォームを復活させる
-        socket.on('reset_screen', () => {
+        // 次の問題へリセットされた時
+        socket.on('reset_screen', (data) => {
             document.getElementById('answer').value = '';
             document.getElementById('form-area').classList.remove('hidden');
             document.getElementById('wait-area').classList.add('hidden');
-        });</script>
+
+            updateTeamSelect(data.teamCount);
+            setFormat(data.format);
+        });
+
+        // チーム選択プルダウンの更新（選択状態はキープする）
+        function updateTeamSelect(count) {
+            const teamSelect = document.getElementById('team');
+            const currentSelected = teamSelect.value;
+            teamSelect.innerHTML = '<option value="">あなたのチームを選択</option>';
+            for (let i = 1; i <= count; i++) {
+                const selected = (currentSelected == i) ? 'selected' : '';
+                teamSelect.innerHTML += `<option value="${i}" ${selected}>チーム ${i}</option>`;
+            }
+        }
+
+        // 表示エリアの切り替え
+        function setFormat(format) {
+            if (format === 'choice') {
+                document.getElementById('text-area').classList.add('hidden');
+                document.getElementById('choice-area').classList.remove('hidden');
+            } else {
+                document.getElementById('text-area').classList.remove('hidden');
+                document.getElementById('choice-area').classList.add('hidden');
+            }
+        }
+
+        function submitTextAnswer() {
+            const answer = document.getElementById('answer').value;
+            sendAnswer(answer);
+        }
+
+        function submitChoiceAnswer(choice) {
+            // 確認ダイアログを出すと親切です
+            if (confirm(`「${choice}」で送信しますか？`)) {
+                sendAnswer(choice);
+            }
+        }
+
+        function sendAnswer(answerStr) {
+            const team = document.getElementById('team').value;
+            if (!team || !answerStr) {
+                alert("チームを選択し、回答を入力（選択）してください！");
+                return;
+            }
+
+            socket.emit('submit_answer', { team: parseInt(team), answer: answerStr });
+
+            document.getElementById('form-area').classList.add('hidden');
+            document.getElementById('wait-area').classList.remove('hidden');
+        }</script>
 </body>
 </html>
