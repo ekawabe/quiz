@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クイズ回答フォーム</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background: #f0f8ff;
+            padding: 20px;
+        }
+
+        select, input, button {
+            width: 100%;
+            font-size: 1.2em;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #0055ff;
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+            button:active {
+                background: #0033aa;
+            }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h2>クイズ回答</h2>
+
+    <div id="form-area">
+        <select id="team">
+            <option value="">あなたのチームを選択</option>
+            <!-- 1〜20をJSで生成 -->
+        </select>
+
+        <input type="text" id="answer" placeholder="回答を入力してください">
+        <button onclick="submitAnswer()">送信する</button>
+    </div>
+
+    <div id="wait-area" class="hidden">
+        <h3 style="color: #0055ff;">送信完了！</h3>
+        <p>スクリーンに注目してください。<br>（修正したい場合は、次の問題が始まるまでお待ちください）</p>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>const socket = io();
+
+        const teamSelect = document.getElementById('team');
+        for (let i = 1; i <= 20; i++) {
+            teamSelect.innerHTML += `<option value="${i}">チーム ${i}</option>`;
+        }
+
+        function submitAnswer() {
+            const team = document.getElementById('team').value;
+            const answer = document.getElementById('answer').value;
+
+            if (!team || !answer) {
+                alert("チームと回答を両方入力してください！");
+                return;
+            }
+
+            socket.emit('submit_answer', { team: parseInt(team), answer: answer });
+
+            document.getElementById('form-area').classList.add('hidden');
+            document.getElementById('wait-area').classList.remove('hidden');
+        }
+
+        // 次の問題が始まったらフォームを復活させる
+        socket.on('reset_screen', () => {
+            document.getElementById('answer').value = '';
+            document.getElementById('form-area').classList.remove('hidden');
+            document.getElementById('wait-area').classList.add('hidden');
+        });</script>
+</body>
+</html>
