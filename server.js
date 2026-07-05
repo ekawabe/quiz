@@ -9,14 +9,15 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 let teamCount = 20;
-let currentFormat = 'text'; // 'text' or 'choice'
+let currentFormat = 'text';
 let answers = {};
 
+// 初期化（scoreプロパティを追加）
 function initAnswers(count) {
     teamCount = count;
     answers = {};
     for (let i = 1; i <= count; i++) {
-        answers[i] = { team: i, answer: null, isOpen: false, isCorrect: false };
+        answers[i] = { team: i, answer: null, isOpen: false, isCorrect: false, score: 0 };
     }
 }
 initAnswers(teamCount);
@@ -46,12 +47,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4択の一括判定（他のボタンを押したらやり直せるように修正）
     socket.on('judge_all_choice', (correctChoice) => {
         if (currentFormat === 'choice') {
             for (let i = 1; i <= teamCount; i++) {
                 if (answers[i].isOpen) {
-                    // 選択肢と合致していればtrue（正解）、それ以外はfalse（不正解）で上書き
                     answers[i].isCorrect = (answers[i].answer === correctChoice);
                 }
             }
@@ -62,6 +61,10 @@ io.on('connection', (socket) => {
     socket.on('reset', (format) => {
         currentFormat = format;
         for (let i = 1; i <= teamCount; i++) {
+            // 次の問題に行く直前、正解(赤)になっていたチームにスコアを+1する
+            if (answers[i].isCorrect) {
+                answers[i].score += 1;
+            }
             answers[i].answer = null;
             answers[i].isOpen = false;
             answers[i].isCorrect = false;
@@ -74,6 +77,15 @@ io.on('connection', (socket) => {
         initAnswers(parseInt(count, 10));
         io.emit('update_status', { answers, teamCount, currentFormat });
         io.emit('reset_screen', { format: currentFormat, teamCount });
+    });
+
+    // スコアのみを全リセットする機能（設定画面用）
+    socket.on('reset_scores', () => {
+        for (let i = 1; i <= teamCount; i++) {
+            answers[i].score = 0;
+            answers[i].isCorrect = false; // 現在の赤判定も解除
+        }
+        io.emit('update_status', { answers, teamCount, currentFormat });
     });
 });
 
