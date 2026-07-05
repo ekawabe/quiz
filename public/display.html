@@ -24,7 +24,7 @@
 
         button {
             font-size: 1.1em;
-            padding: 10px 20px;
+            padding: 10px 15px;
             cursor: pointer;
             border-radius: 5px;
             border: none;
@@ -36,23 +36,29 @@
             color: white;
         }
 
-        .btn-setting {
-            background: #555;
-            color: white;
-        }
-
-        .btn-reset {
+        .btn-reset-text {
             background: #ffaa00;
             color: black;
         }
 
-        /* 4択正解ボタン（4択出題のときだけ表示される） */
+        .btn-reset-choice {
+            background: #ff8800;
+            color: black;
+        }
+
+        .btn-setting {
+            background: #333;
+            color: #888;
+            padding: 10px;
+        }
+        /* 目立たなくする */
+
         #choice-controls {
             display: none;
             background: #333;
-            padding: 10px;
+            padding: 8px 15px;
             border-radius: 8px;
-            margin-left: 20px;
+            margin: 0 10px;
         }
 
         .btn-choice-judge {
@@ -63,24 +69,16 @@
             color: white;
         }
 
-        /* 設定エリア */
         #settings-area {
             display: none;
             background: #222;
-            padding: 20px;
+            padding: 15px;
             border-radius: 10px;
-            border: 2px solid #555;
-            margin: 0 auto 20px auto;
+            border: 2px solid #444;
+            margin: 0 auto 15px auto;
             width: fit-content;
         }
 
-            #settings-area input, #settings-area select {
-                font-size: 1.1em;
-                padding: 5px;
-                margin: 0 10px;
-            }
-
-        /* 枠の並び方（チーム数によって自動で折り返し） */
         #grid {
             display: flex;
             flex-wrap: wrap;
@@ -89,6 +87,7 @@
             margin: 0 auto;
         }
 
+        /* 枠のサイズ拡張（1行6文字×3行が収まるサイズ） */
         .cell {
             background: #444;
             border-radius: 8px;
@@ -96,30 +95,44 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-size: 1.5em;
-            font-weight: bold;
             cursor: pointer;
             transition: all 0.3s;
             user-select: none;
             border: 3px solid #222;
-            width: 160px;
-            height: 100px; /* パネルのサイズ */
+            width: 180px;
+            height: 140px;
+            box-sizing: border-box;
+            padding: 5px;
         }
 
         .team-name {
-            font-size: 0.6em;
+            font-size: 0.8em;
             color: #ccc;
             margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .status-text {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        /* 回答テキスト（全角6文字で折り返し） */
+        .answer-text {
+            display: none;
+            color: white;
+            font-weight: bold;
+            font-size: 24px;
+            line-height: 1.2;
+            width: 100%;
+            word-break: break-all;
+            overflow-wrap: anywhere;
         }
 
         .cell.answered {
             background: #555;
             border-color: #00ff00;
         }
-
-            .cell.answered .answer-text {
-                display: none;
-            }
 
             .cell.answered .status-text:after {
                 content: "回答完了";
@@ -133,8 +146,6 @@
 
             .cell.open .answer-text {
                 display: block;
-                color: white;
-                font-size: 1.2em;
             }
 
             .cell.open .status-text {
@@ -151,26 +162,25 @@
 <body>
     <div class="controls">
         <button class="btn-open" onclick="openAnswers()">全員の回答オープン</button>
-        <button class="btn-setting" onclick="toggleSettings()">設定 / 次の問題へ ⚙️</button>
 
         <div id="choice-controls">
-            一括正解:
+            一括正解(赤):
             <button class="btn-choice-judge" onclick="judgeAll('A')">A</button>
             <button class="btn-choice-judge" onclick="judgeAll('B')">B</button>
             <button class="btn-choice-judge" onclick="judgeAll('C')">C</button>
             <button class="btn-choice-judge" onclick="judgeAll('D')">D</button>
         </div>
+
+        <button class="btn-reset-text" onclick="resetAnswers('text')">次の問題へ (テキスト)</button>
+        <button class="btn-reset-choice" onclick="resetAnswers('choice')">次の問題へ (4択)</button>
+
+        <button class="btn-setting" onclick="toggleSettings()">⚙️</button>
     </div>
 
-    <!-- 設定・次へ移行エリア -->
+    <!-- めったに使わない設定エリア -->
     <div id="settings-area">
-        チーム数: <input type="number" id="teamCountInput" value="20" min="1" max="100">
-        出題形式:
-        <select id="formatSelect">
-            <option value="text">フリーテキスト</option>
-            <option value="choice">4択 (A, B, C, D)</option>
-        </select>
-        <button class="btn-reset" onclick="resetAnswers()">設定を適用 ＆ 次の問題へ</button>
+        チーム数変更: <input type="number" id="teamCountInput" value="20" min="1" max="100" style="width: 60px; font-size: 1.1em; padding: 5px;">
+        <button onclick="changeTeamCount()" style="background:#555; color:white;">変更してリセット</button>
     </div>
 
     <div id="grid"></div>
@@ -184,19 +194,14 @@
         socket.on('update_status', (data) => {
             currentAnswers = data.answers;
             currentTeamCount = data.teamCount;
-
-            // チーム数と形式の設定欄を同期
             document.getElementById('teamCountInput').value = currentTeamCount;
-            document.getElementById('formatSelect').value = data.currentFormat;
 
-            // 4択ボタンの表示/非表示
-            const choiceControls = document.getElementById('choice-controls');
-            choiceControls.style.display = (data.currentFormat === 'choice') ? 'inline-block' : 'none';
+            // 4択ボタンの表示制御
+            document.getElementById('choice-controls').style.display = (data.currentFormat === 'choice') ? 'inline-block' : 'none';
 
             renderGrid();
         });
 
-        // マスを描画
         function renderGrid() {
             grid.innerHTML = '';
             for (let i = 1; i <= currentTeamCount; i++) {
@@ -209,7 +214,7 @@
                 if (data.isOpen) cell.classList.add('open');
                 if (data.isCorrect) cell.classList.add('correct');
 
-                cell.onclick = () => toggleCorrect(i); // 個別クリックでも正誤反転可能
+                cell.onclick = () => toggleCorrect(i);
 
                 cell.innerHTML = `
                         <div class="team-name">チーム ${i}</div>
@@ -225,16 +230,22 @@
             el.style.display = (el.style.display === 'block') ? 'none' : 'block';
         }
 
+        function changeTeamCount() {
+            const count = document.getElementById('teamCountInput').value;
+            if (confirm(`チーム数を ${count} に変更して全てリセットしますか？`)) {
+                socket.emit('change_team_count', count);
+                document.getElementById('settings-area').style.display = 'none';
+            }
+        }
+
         function openAnswers() { socket.emit('open_answers'); }
         function toggleCorrect(teamId) { socket.emit('toggle_correct', teamId); }
         function judgeAll(choice) { socket.emit('judge_all_choice', choice); }
 
-        function resetAnswers() {
-            const count = document.getElementById('teamCountInput').value;
-            const format = document.getElementById('formatSelect').value;
-            if (confirm("画面をリセットして次の問題へ移行しますか？")) {
-                socket.emit('reset', { teamCount: count, format: format });
-                document.getElementById('settings-area').style.display = 'none';
+        function resetAnswers(format) {
+            const formatName = format === 'text' ? 'テキスト形式' : '4択形式';
+            if (confirm(`【${formatName}】で次の問題へ進みますか？`)) {
+                socket.emit('reset', format);
             }
         }</script>
 </body>

@@ -39,7 +39,7 @@
             display: none !important;
         }
 
-        /* 4択ボタンのデザイン */
+        /* 4択ボタンの白背景＆色付き枠線デザイン */
         .choice-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -48,32 +48,40 @@
         }
 
         .btn-choice {
-            font-size: 2em;
-            padding: 40px 10px;
-            border: none;
+            font-size: 2.2em;
+            padding: 35px 10px;
             border-radius: 10px;
-            color: white;
+            background: #ffffff;
             cursor: pointer;
             font-weight: bold;
+            border-style: solid;
+            border-width: 4px;
         }
 
+            .btn-choice:active {
+                background: #f0f0f0;
+            }
+
         .btn-a {
-            background: #e74c3c;
+            border-color: #e74c3c;
+            color: #e74c3c;
         }
-        /* 赤 */
+
         .btn-b {
-            background: #3498db;
+            border-color: #3498db;
+            color: #3498db;
         }
-        /* 青 */
+
         .btn-c {
-            background: #2ecc71;
+            border-color: #2ecc71;
+            color: #2ecc71;
         }
-        /* 緑 */
+
         .btn-d {
-            background: #f1c40f;
-            color: #333;
+            border-color: #f1c40f;
+            color: #e6b800;
         }
-        /* 黄 */
+        /* 黄色は視認性のため少し濃いめ */
     </style>
 </head>
 <body>
@@ -84,15 +92,15 @@
     </select>
 
     <div id="form-area">
-        <!-- フリーテキスト用 -->
+        <!-- フリーテキスト用 (18文字制限) -->
         <div id="text-area">
-            <input type="text" id="answer" placeholder="回答を入力してください">
+            <input type="text" id="answer" placeholder="回答を入力 (18文字以内)" maxlength="18">
             <button class="btn-submit" onclick="submitTextAnswer()">送信する</button>
         </div>
 
         <!-- 4択用 -->
         <div id="choice-area" class="hidden">
-            <p style="font-weight: bold; color: #333;">選択肢をタップして回答</p>
+            <p style="font-weight: bold; color: #333; margin-bottom: 5px;">選択肢をタップして回答</p>
             <div class="choice-grid">
                 <button class="btn-choice btn-a" onclick="submitChoiceAnswer('A')">A</button>
                 <button class="btn-choice btn-b" onclick="submitChoiceAnswer('B')">B</button>
@@ -110,13 +118,11 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>const socket = io();
 
-        // サーバーから状態を受信
         socket.on('update_status', (data) => {
             updateTeamSelect(data.teamCount);
             setFormat(data.currentFormat);
         });
 
-        // 次の問題へリセットされた時
         socket.on('reset_screen', (data) => {
             document.getElementById('answer').value = '';
             document.getElementById('form-area').classList.remove('hidden');
@@ -126,7 +132,6 @@
             setFormat(data.format);
         });
 
-        // チーム選択プルダウンの更新（選択状態はキープする）
         function updateTeamSelect(count) {
             const teamSelect = document.getElementById('team');
             const currentSelected = teamSelect.value;
@@ -137,7 +142,6 @@
             }
         }
 
-        // 表示エリアの切り替え
         function setFormat(format) {
             if (format === 'choice') {
                 document.getElementById('text-area').classList.add('hidden');
@@ -154,7 +158,6 @@
         }
 
         function submitChoiceAnswer(choice) {
-            // 確認ダイアログを出すと親切です
             if (confirm(`「${choice}」で送信しますか？`)) {
                 sendAnswer(choice);
             }

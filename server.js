@@ -8,8 +8,8 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-let teamCount = 20; // デフォルトのチーム数
-let currentFormat = 'text'; // 'text' (フリー) or 'choice' (4択)
+let teamCount = 20;
+let currentFormat = 'text'; // 'text' or 'choice'
 let answers = {};
 
 function initAnswers(count) {
@@ -22,19 +22,17 @@ function initAnswers(count) {
 initAnswers(teamCount);
 
 io.on('connection', (socket) => {
-    // 接続時に現在の全情報を送る
     socket.emit('update_status', { answers, teamCount, currentFormat });
 
-    // 回答を受信
     socket.on('submit_answer', (data) => {
         const teamId = data.team;
         if (answers[teamId]) {
-            answers[teamId].answer = data.answer;
+            // サーバー側でも18文字以内に制限
+            answers[teamId].answer = data.answer.substring(0, 18);
             io.emit('update_status', { answers, teamCount, currentFormat });
         }
     });
 
-    // 全オープン（青）
     socket.on('open_answers', () => {
         for (let i = 1; i <= teamCount; i++) {
             if (answers[i].answer) answers[i].isOpen = true;
@@ -42,7 +40,6 @@ io.on('connection', (socket) => {
         io.emit('update_status', { answers, teamCount, currentFormat });
     });
 
-    // 手動での正誤判定（個別クリック）
     socket.on('toggle_correct', (teamId) => {
         if (answers[teamId] && answers[teamId].isOpen) {
             answers[teamId].isCorrect = !answers[teamId].isCorrect;
@@ -50,11 +47,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4択一括での正解判定（赤）
     socket.on('judge_all_choice', (correctChoice) => {
         if (currentFormat === 'choice') {
             for (let i = 1; i <= teamCount; i++) {
-                // オープン済み、かつ回答が一致していれば赤にする
                 if (answers[i].isOpen && answers[i].answer === correctChoice) {
                     answers[i].isCorrect = true;
                 }
@@ -63,14 +58,21 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 次の問題へ（チーム数、形式の変更含む）
-    socket.on('reset', (data) => {
-        currentFormat = data.format || 'text';
-        if (data.teamCount) teamCount = parseInt(data.teamCount, 10);
+    // 次の問題へ（テキストか4択かを選択）
+    socket.on('reset', (format) => {
+        currentFormat = format;
+        for (let i = 1; i <= teamCount; i++) {
+            answers[i].answer = null;
+            answers[i].isOpen = false;
+            answers[i].isCorrect = false;
+        }
+        io.emit('update_status', { answers, teamCount, currentFormat });
+        io.emit('reset_screen', { format: currentFormat, teamCount });
+    });
 
-        initAnswers(teamCount);
-
-        // サーバーとスマホ画面の両方をリセット
+    // めったに使わないチーム数変更（変更時は回答もリセット）
+    socket.on('change_team_count', (count) => {
+        initAnswers(parseInt(count, 10));
         io.emit('update_status', { answers, teamCount, currentFormat });
         io.emit('reset_screen', { format: currentFormat, teamCount });
     });
