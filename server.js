@@ -27,7 +27,6 @@ io.on('connection', (socket) => {
     socket.on('submit_answer', (data) => {
         const teamId = data.team;
         if (answers[teamId]) {
-            // サーバー側でも18文字以内に制限
             answers[teamId].answer = data.answer.substring(0, 18);
             io.emit('update_status', { answers, teamCount, currentFormat });
         }
@@ -47,18 +46,19 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 4択の一括判定（他のボタンを押したらやり直せるように修正）
     socket.on('judge_all_choice', (correctChoice) => {
         if (currentFormat === 'choice') {
             for (let i = 1; i <= teamCount; i++) {
-                if (answers[i].isOpen && answers[i].answer === correctChoice) {
-                    answers[i].isCorrect = true;
+                if (answers[i].isOpen) {
+                    // 選択肢と合致していればtrue（正解）、それ以外はfalse（不正解）で上書き
+                    answers[i].isCorrect = (answers[i].answer === correctChoice);
                 }
             }
             io.emit('update_status', { answers, teamCount, currentFormat });
         }
     });
 
-    // 次の問題へ（テキストか4択かを選択）
     socket.on('reset', (format) => {
         currentFormat = format;
         for (let i = 1; i <= teamCount; i++) {
@@ -70,7 +70,6 @@ io.on('connection', (socket) => {
         io.emit('reset_screen', { format: currentFormat, teamCount });
     });
 
-    // めったに使わないチーム数変更（変更時は回答もリセット）
     socket.on('change_team_count', (count) => {
         initAnswers(parseInt(count, 10));
         io.emit('update_status', { answers, teamCount, currentFormat });
