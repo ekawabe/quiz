@@ -61,6 +61,7 @@
             align-items: center;
         }
 
+        /* 管理画面の4択ボタンデザイン（回答画面と同じにする） */
         .btn-choice-judge {
             padding: 8px 15px;
             margin: 0 5px;
@@ -183,33 +184,6 @@
             border-color: #ff0000;
             transform: scale(1.05);
         }
-
-        /* ランキングエリアのデザイン */
-        #ranking-area {
-            background: #222;
-            padding: 15px 20px;
-            border-radius: 10px;
-            border: 2px solid #444;
-            margin: 20px auto;
-            width: 90%;
-            max-width: 900px;
-            text-align: left;
-            font-size: 1.3em;
-        }
-
-        .rank-line {
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #ffd700;
-        }
-
-        .rank-teams {
-            color: white;
-            margin-left: 10px;
-            font-weight: normal;
-            line-height: 1.4;
-            display: inline-block;
-        }
     </style>
 </head>
 <body>
@@ -230,24 +204,17 @@
         <button class="btn-setting" onclick="toggleSettings()">⚙️</button>
     </div>
 
-    <!-- 設定エリア -->
+    <!-- めったに使わない設定エリア -->
     <div id="settings-area">
         チーム数変更: <input type="number" id="teamCountInput" value="20" min="1" max="100" style="width: 60px; font-size: 1.1em; padding: 5px;">
-        <button onclick="changeTeamCount()" style="background:#555; color:white; margin-right: 20px;">変更＆リセット</button>
-
-        <button onclick="resetScores()" style="background:#cc0000; color:white;">ランキング(点数)のみ0にリセット</button>
+        <button onclick="changeTeamCount()" style="background:#555; color:white;">変更してリセット</button>
     </div>
 
     <div id="grid"></div>
 
-    <!-- ランキングエリア（3位まで表示） -->
-    <div id="ranking-area"></div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>const socket = io();
         const grid = document.getElementById('grid');
-        const rankingArea = document.getElementById('ranking-area');
-
         let currentAnswers = {};
         let currentTeamCount = 20;
 
@@ -256,10 +223,10 @@
             currentTeamCount = data.teamCount;
             document.getElementById('teamCountInput').value = currentTeamCount;
 
+            // 4択ボタンの表示制御
             document.getElementById('choice-controls').style.display = (data.currentFormat === 'choice') ? 'flex' : 'none';
 
             renderGrid();
-            renderRanking();
         });
 
         function renderGrid() {
@@ -276,10 +243,8 @@
 
                 cell.onclick = () => toggleCorrect(i);
 
-                // チーム名の横に、リアルタイムの得点を表示
-                const currentScore = data.score + (data.isCorrect ? 1 : 0);
                 cell.innerHTML = `
-                        <div class="team-name">チーム ${i} <span style="color:#ffd700; margin-left:5px;">★${currentScore}</span></div>
+                        <div class="team-name">チーム ${i}</div>
                         <div class="status-text">${data.answer ? '' : '待機中...'}</div>
                         <div class="answer-text">${data.answer || ''}</div>
                     `;
@@ -287,45 +252,28 @@
             }
         }
 
-        // ランキングの生成と描画
-        function renderRanking() {
-            const teamScores = [];
-            for (let i = 1; i <= currentTeamCount; i++) {
-                const data = currentAnswers[i];
-                if (!data) continue;
-                // 今の問題で正解状態（赤）になっていれば、スコアを先取り加算してランキングに反映
-                const totalScore = data.score + (data.isCorrect ? 1 : 0);
-                teamScores.push({ team: i, score: totalScore });
+        function toggleSettings() {
+            const el = document.getElementById('settings-area');
+            el.style.display = (el.style.display === 'block') ? 'none' : 'block';
+        }
+
+        function changeTeamCount() {
+            const count = document.getElementById('teamCountInput').value;
+            if (confirm(`チーム数を ${count} に変更して全てリセットしますか？`)) {
+                socket.emit('change_team_count', count);
+                document.getElementById('settings-area').style.display = 'none';
             }
+        }
 
-            // スコアごとにチームをまとめる
-            const scoreMap = {};
-            teamScores.forEach(ts => {
-                if (!scoreMap[ts.score]) { scoreMap[ts.score] = []; }
-                scoreMap[ts.score].push(ts.team);
-            });
+        function openAnswers() { socket.emit('open_answers'); }
+        function toggleCorrect(teamId) { socket.emit('toggle_correct', teamId); }
+        function judgeAll(choice) { socket.emit('judge_all_choice', choice); }
 
-            // 点数が高い順に並び替え（0点のチームは大量に並ぶと見栄えが悪いので除外）
-            const sortedScores = Object.keys(scoreMap)
-                .map(Number)
-                .filter(s => s > 0)
-                .sort((a, b) => b - a);
-
-            rankingArea.innerHTML = '';
-
-            if (sortedScores.length === 0) {
-                rankingArea.innerHTML = '<div style="text-align:center; color:#888;">(正解ランキング待機中...)</div>';
-                return;
+        function resetAnswers(format) {
+            const formatName = format === 'text' ? 'テキスト形式' : '4択形式';
+            if (confirm(`【${formatName}】で次の問題へ進みますか？`)) {
+                socket.emit('reset', format);
             }
-
-            // 上位3位まで表示
-            for (let i = 0; i < Math.min(3, sortedScores.length); i++) {
-                const score = sortedScores[i];
-                const teams = scoreMap[score];
-                // 「チーム1、2、3」のように文字列をつくる
-                const teamStrs = teams.map(t => `${t}`).join('、');
-
-                const rankDiv = document.createElement('div');
-                rankDiv.className = 'rank-line';
-                rankDiv.innerHTML = `${i + 1}位 (${score}点): <span class="rank-teams">チーム ${teamStrs}</span>`;
-                rankingAre
+        }</script>
+</body>
+</html>
