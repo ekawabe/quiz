@@ -105,7 +105,19 @@
             border: 2px solid #444;
             margin: 0 auto 15px auto;
             width: fit-content;
+            text-align: right;
         }
+
+        .setting-row {
+            margin-bottom: 10px;
+        }
+
+            .setting-row input {
+                width: 60px;
+                font-size: 1.1em;
+                padding: 5px;
+                margin: 0 5px;
+            }
 
         #grid {
             display: flex;
@@ -122,6 +134,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            position: relative; /* バッジ用 */
             cursor: pointer;
             transition: all 0.3s;
             user-select: none;
@@ -184,7 +197,23 @@
             transform: scale(1.05);
         }
 
-        /* ランキング表示エリアのデザイン */
+        /* ボーナスバッジ */
+        .bonus-badge {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            background: #ff007f;
+            color: white;
+            font-size: 0.8em;
+            padding: 5px 10px;
+            border-radius: 15px;
+            border: 2px solid white;
+            font-weight: bold;
+            transform: rotate(15deg);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
         #ranking-area {
             margin: 20px auto;
             padding: 15px;
@@ -216,17 +245,16 @@
             color: #ffd700;
             font-size: 1.3em;
         }
-        /* 1位は金 */
+
         .rank-2 {
             color: #c0c0c0;
             font-size: 1.2em;
         }
-        /* 2位は銀 */
+
         .rank-3 {
             color: #cd7f32;
             font-size: 1.1em;
         }
-        /* 3位は銅 */
     </style>
 </head>
 <body>
@@ -243,13 +271,20 @@
 
         <button class="btn-reset-text" onclick="resetAnswers('text')">次の問題へ (テキスト)</button>
         <button class="btn-reset-choice" onclick="resetAnswers('choice')">次の問題へ (4択)</button>
-
         <button class="btn-setting" onclick="toggleSettings()">⚙️</button>
     </div>
 
+    <!-- 設定エリア -->
     <div id="settings-area">
-        チーム数変更: <input type="number" id="teamCountInput" value="20" min="1" max="100" style="width: 60px; font-size: 1.1em; padding: 5px;">
-        <button onclick="changeTeamCount()" style="background:#555; color:white;">変更してリセット</button>
+        <div class="setting-row">
+            チーム数: <input type="number" id="teamCountInput" value="20" min="1" max="100">
+            <button onclick="changeTeamCount()" style="background:#ff4444; color:white;">変更して全てリセット</button>
+        </div>
+        <div class="setting-row">
+            基本: <input type="number" id="baseScoreInput" value="10"> 点 /
+            早押しボーナス: <input type="number" id="bonusScoreInput" value="10"> 点
+            <button onclick="updateSettings()" style="background:#555; color:white;">得点設定を更新</button>
+        </div>
     </div>
 
     <!-- 回答グリッド -->
@@ -267,21 +302,42 @@
         let currentAnswers = {};
         let currentScores = {};
         let currentTeamCount = 20;
+        let currentBaseScore = 10;
+        let currentBonusScore = 10;
 
         socket.on('update_status', (data) => {
             currentAnswers = data.answers;
             currentScores = data.scores;
             currentTeamCount = data.teamCount;
+            currentBaseScore = data.baseScore;
+            currentBonusScore = data.bonusScore;
+
             document.getElementById('teamCountInput').value = currentTeamCount;
+            document.getElementById('baseScoreInput').value = currentBaseScore;
+            document.getElementById('bonusScoreInput').value = currentBonusScore;
 
             document.getElementById('choice-controls').style.display = (data.currentFormat === 'choice') ? 'flex' : 'none';
 
             renderGrid();
-            renderRanking(); // ランキングを更新
+            renderRanking();
         });
+
+        // 誰が一番早い正解者か判定する
+        function getFastestCorrectTeamId() {
+            let correctTeams = [];
+            for (let i = 1; i <= currentTeamCount; i++) {
+                if (currentAnswers[i] && currentAnswers[i].isCorrect && currentAnswers[i].timestamp) {
+                    correctTeams.push(currentAnswers[i]);
+                }
+            }
+            correctTeams.sort((a, b) => a.timestamp - b.timestamp);
+            return correctTeams.length > 0 ? correctTeams[0].team : null;
+        }
 
         function renderGrid() {
             grid.innerHTML = '';
+            const fastestId = getFastestCorrectTeamId(); // 早押し1位を取得
+
             for (let i = 1; i <= currentTeamCount; i++) {
                 const data = currentAnswers[i];
                 if (!data) continue;
@@ -294,7 +350,14 @@
 
                 cell.onclick = () => toggleCorrect(i);
 
+                // ボーナスバッジのHTML
+                let bonusHtml = '';
+                if (data.isCorrect && i === fastestId) {
+                    bonusHtml = '<div class="bonus-badge">ボーナス</div>';
+                }
+
                 cell.innerHTML = `
+                        ${bonusHtml}
                         <div class="team-name">チーム ${i}</div>
                         <div class="status-text">${data.answer ? '' : '待機中...'}</div>
                         <div class="answer-text">${data.answer || ''}</div>
@@ -303,49 +366,44 @@
             }
         }
 
-        // ランキングの計算と描画
         function renderRanking() {
             const content = document.getElementById('ranking-content');
+            const fastestId = getFastestCorrectTeamId();
 
-            // 1. 各チームの現在のスコアを計算（確定スコア ＋ 今の問題で正解しているか）
             const teamCurrentScores = {};
             for (let i = 1; i <= currentTeamCount; i++) {
                 let score = currentScores[i] || 0;
-                // もし今赤く光っていれば、リアルタイムで+1として計算
+
+                // リアルタイムでスコアを計算
                 if (currentAnswers[i] && currentAnswers[i].isCorrect) {
-                    score += 1;
+                    if (i === fastestId) {
+                        score += currentBaseScore + currentBonusScore;
+                    } else {
+                        score += currentBaseScore;
+                    }
                 }
                 teamCurrentScores[i] = score;
             }
 
-            // 2. スコアの重複をなくして降順（大きい順）に並べ替え
-            // 例: [3, 1, 1, 0] -> [3, 1, 0]
             const allScores = Object.values(teamCurrentScores);
             const uniqueScores = [...new Set(allScores)].sort((a, b) => b - a);
-
-            // 3. 1点以上のスコアだけを抽出し、上位3つ（3位）までを取得
             const topScores = uniqueScores.filter(s => s > 0).slice(0, 3);
 
             if (topScores.length === 0) {
-                content.innerHTML = '<span style="color:#aaa;">まだ正解したチームはありません</span>';
+                content.innerHTML = '<span style="color:#aaa;">まだ得点したチームはありません</span>';
                 return;
             }
 
-            // 4. 取得したスコアごとに、該当するチームをまとめてHTMLを生成
             let html = '';
             topScores.forEach((score, index) => {
-                const rank = index + 1; // 1位, 2位, 3位
+                const rank = index + 1;
                 const teams = [];
                 for (let i = 1; i <= currentTeamCount; i++) {
-                    if (teamCurrentScores[i] === score) {
-                        teams.push(i);
-                    }
+                    if (teamCurrentScores[i] === score) teams.push(i);
                 }
-
-                // チーム名が多くなりすぎないよう「チーム1, 2, 3」という表記にする
                 const teamList = `チーム ${teams.join(', ')}`;
-
-                html += `<div class="rank-line rank-${rank}">${rank}位 (${score}問正解)： ${teamList}</div>`;
+                // 「点」という表記に変更
+                html += `<div class="rank-line rank-${rank}">${rank}位 (${score}点)： ${teamList}</div>`;
             });
 
             content.innerHTML = html;
@@ -362,6 +420,13 @@
                 socket.emit('change_team_count', count);
                 document.getElementById('settings-area').style.display = 'none';
             }
+        }
+
+        function updateSettings() {
+            const base = document.getElementById('baseScoreInput').value;
+            const bonus = document.getElementById('bonusScoreInput').value;
+            socket.emit('update_settings', { baseScore: base, bonusScore: bonus });
+            document.getElementById('settings-area').style.display = 'none';
         }
 
         function openAnswers() { socket.emit('open_answers'); }
